@@ -15,13 +15,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install sing-box binary (pinned to v1.14.0 to match core)
+      - name: Install sing-box binary (pinned near v1.14.0 to match core)
         env:
-          SB_VER: v1.14.0
+          SB_VER: v1.14.0-beta.2
         run: |
           VER_NUM="${SB_VER#v}"
           curl -L -o sing-box.tar.gz \
             "https://github.com/SagerNet/sing-box/releases/download/${SB_VER}/sing-box-${VER_NUM}-linux-amd64.tar.gz"
+          file sing-box.tar.gz
           tar -xzf sing-box.tar.gz
           sudo mv sing-box-${VER_NUM}-linux-amd64/sing-box /usr/local/bin/sing-box
           sing-box version
