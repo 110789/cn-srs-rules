@@ -1,0 +1,55 @@
+name: Update CN IP rule-sets (srs)
+
+on:
+  schedule:
+    - cron: '0 20 * * *'   # UTC 20:00 = 北京时间次日 04:00，可自行调整
+  workflow_dispatch: {}     # 允许手动触发
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install sing-box binary (pinned to v1.14.0 to match core)
+        env:
+          SB_VER: v1.14.0
+        run: |
+          VER_NUM="${SB_VER#v}"
+          curl -L -o sing-box.tar.gz \
+            "https://github.com/SagerNet/sing-box/releases/download/${SB_VER}/sing-box-${VER_NUM}-linux-amd64.tar.gz"
+          tar -xzf sing-box.tar.gz
+          sudo mv sing-box-${VER_NUM}-linux-amd64/sing-box /usr/local/bin/sing-box
+          sing-box version
+
+      - name: Download source lists
+        run: |
+          mkdir -p src rules
+          curl -L -o src/cn_v4.txt https://github.com/X-Shelby/geoip/releases/download/latest/cn_v4.txt
+          curl -L -o src/cn_v6.txt https://github.com/X-Shelby/geoip/releases/download/latest/cn_v6.txt
+
+      - name: Build source json + compile srs
+        run: |
+          build_srs() {
+            local txt="$1" name="$2"
+            grep -v '^#' "$txt" | grep -v '^[[:space:]]*$' > "src/${name}.clean.txt"
+            awk 'BEGIN{print "{\"version\":1,\"rules\":[{\"ip_cidr\":["}
+                 {if(NR>1) printf ","; printf "\"%s\"", $0}
+                 END{print "]}]}"}' "src/${name}.clean.txt" > "src/${name}.json"
+            sing-box rule-set compile "src/${name}.json" -o "rules/${name}.srs"
+          }
+          build_srs src/cn_v4.txt cn_v4
+          build_srs src/cn_v6.txt cn_v6
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add rules/cn_v4.srs rules/cn_v6.srs
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "chore: auto update cn_v4/cn_v6 srs $(date -u +%Y-%m-%d)"
+          git push
